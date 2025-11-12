@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Мини-Форум</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 800px;
+      margin: 2rem auto;
+      background: #f9fafb;
+      color: #333;
+      padding: 1rem;
+    }
+    h1 {
+      text-align: center;
+      color: #2b6cb0;
+    }
+    .topic, .message, form {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 1rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    form input, form textarea {
+      width: 100%;
+      margin: 0.5rem 0;
+      padding: 0.5rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 1rem;
+    }
+    button {
+      background: #2b6cb0;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #2c5282; }
+    .message { background: #f7fafc; }
+  </style>
+</head>
+<body>
+  <h1>Мини-Форум</h1>
+
+  <form id="topicForm">
+    <h2>Создать тему</h2>
+    <input type="text" id="title" placeholder="Название темы" required>
+    <textarea id="content" placeholder="Текст темы" required></textarea>
+    <button type="submit">Создать</button>
+  </form>
+
+  <div id="topics"></div>
+
+  <script>
+    const API_TOPICS = 'https://691454b1f34a2ff1170f8f00.mockapi.io/topics';
+    const API_MESSAGES = 'https://691454b1f34a2ff1170f8f00.mockapi.io/messages';
+
+    async function loadTopics() {
+      const res = await fetch(API_TOPICS);
+      const topics = await res.json();
+      const container = document.getElementById('topics');
+      if (!topics.length) {
+        container.innerHTML = '<p>Пока нет тем. Будь первым!</p>';
+        return;
+      }
+      container.innerHTML = topics.map(t => `
+        <div class="topic">
+          <h3>${t.title}</h3>
+          <p>${t.content}</p>
+          <button onclick="showMessages(${t.id})">Комментарии</button>
+          <div id="messages-${t.id}"></div>
+        </div>
+      `).join('');
+    }
+
+    async function showMessages(topicId) {
+      const res = await fetch(`${API_MESSAGES}?topicId=${topicId}`);
+      const messages = await res.json();
+      const container = document.getElementById(`messages-${topicId}`);
+      container.innerHTML = `
+        <h4>Комментарии</h4>
+        ${messages.map(m => `<div class="message"><b>${m.author}</b>: ${m.text}</div>`).join('')}
+        <form onsubmit="sendMessage(event, ${topicId})">
+          <input type="text" id="author-${topicId}" placeholder="Имя" required>
+          <input type="text" id="text-${topicId}" placeholder="Сообщение" required>
+          <button type="submit">Отправить</button>
+        </form>
+      `;
+    }
+
+    async function sendMessage(e, topicId) {
+      e.preventDefault();
+      const author = document.getElementById(`author-${topicId}`).value;
+      const text = document.getElementById(`text-${topicId}`).value;
+      await fetch(API_MESSAGES, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topicId, author, text })
+      });
+      showMessages(topicId);
+    }
+
+    document.getElementById('topicForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const title = document.getElementById('title').value;
+      const content = document.getElementById('content').value;
+      await fetch(API_TOPICS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content })
+      });
+      e.target.reset();
+      loadTopics();
+    });
+
+    loadTopics();
+  </script>
+</body>
+</html>
