@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Мини-Форум — Регистрация + Авторизация</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 900px;
+      margin: 2rem auto;
+      padding: 1rem;
+      background: #f1f5f9;
+    }
+    h1 { text-align: center; }
+    .card {
+      background: white;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      border-radius: 10px;
+      box-shadow: 0 2px 4px rgba(0,0,0,.1);
+    }
+    input, textarea {
+      width: 100%;
+      padding: .5rem;
+      margin-top: .5rem;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: .5rem 1rem;
+      margin-top: .5rem;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button.red { background: #dc2626; }
+    .msg { background: #f8fafc; padding: .5rem; border-radius: 6px; margin-bottom: .5rem; }
+  </style>
+</head>
+<body>
+
+<h1>Мини-Форум — Авторизация</h1>
+
+<div id="auth-box" class="card"></div>
+<div id="create-topic" class="card" style="display:none;">
+  <h2>Создать тему</h2>
+  <input id="topic-title" placeholder="Заголовок">
+  <textarea id="topic-content" placeholder="Текст"></textarea>
+  <button onclick="createTopic()">Создать</button>
+</div>
+
+<div id="topics"></div>
+
+<script>
+const API_USERS = "https://69174185a7a34288a2801f20.mockapi.io/users";
+const API_TOPICS = "https://691454b1f34a2ff1170f8f00.mockapi.io/topics";
+const API_MESSAGES = "https://691454b1f34a2ff1170f8f00.mockapi.io/messages";
+
+let session = JSON.parse(localStorage.getItem("session"));
+
+function renderAuth() {
+  const box = document.getElementById("auth-box");
+
+  if (!session) {
+    box.innerHTML = `
+      <h2>Вход</h2>
+      <input id="login-username" placeholder="Логин">
+      <input id="login-password" placeholder="Пароль" type="password">
+      <button onclick="login()">Войти</button>
+
+      <h2>Регистрация</h2>
+      <input id="reg-username" placeholder="Логин">
+      <input id="reg-password" placeholder="Пароль" type="password">
+      <button onclick="register()">Создать аккаунт</button>
+    `;
+  } else {
+    box.innerHTML = `
+      <p>Вы вошли как <b>${session.username}</b></p>
+      <button onclick="logout()">Выйти</button>
+    `;
+    document.getElementById("create-topic").style.display = "block";
+  }
+}
+
+async function register() {
+  const username = document.getElementById("reg-username").value.trim();
+  const password = document.getElementById("reg-password").value.trim();
+
+  if (!username || !password) return alert("Введите логин и пароль");
+
+  await fetch(API_USERS, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+  });
+
+  alert("Аккаунт создан! Теперь войдите.");
+}
+
+async function login() {
+  const username = document.getElementById("login-username").value.trim();
+  const password = document.getElementById("login-password").value.trim();
+
+  const res = await fetch(`${API_USERS}?username=${username}`);
+  const users = await res.json();
+  const u = users[0];
+
+  if (!u || u.password !== password) {
+    return alert("Неверный логин или пароль");
+  }
+
+  session = { userId: u.id, username: u.username };
+  localStorage.setItem("session", JSON.stringify(session));
+  renderAuth();
+}
+
+function logout() {
+  localStorage.removeItem("session");
+  session = null;
+  location.reload();
+}
+
+async function loadTopics() {
+  const res = await fetch(API_TOPICS);
+  const topics = await res.json();
+  const container = document.getElementById("topics");
+
+  container.innerHTML = topics.map(t => `
+    <div class="card">
+      <h3>${t.title}</h3>
+      <p>${t.content}</p>
+      <small>Автор: ${t.authorName}</small><br>
+
+      ${session && session.userId == t.authorId ? `
+        <button onclick="editTopic(${t.id})">Редактировать</button>
+        <button class="red" onclick="deleteTopic(${t.id})">Удалить</button>
+      ` : ""}
+
+      <button onclick="showMessages(${t.id})">Комментарии</button>
+      <div id="msg-${t.id}"></div>
+    </div>
+  `).join("");
+}
+
+async function createTopic() {
+  const title = document.getElementById("topic-title").value;
+  const content = document.getElementById("topic-content").value;
+
+  await fetch(API_TOPICS, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title,
+      content,
+      authorId: session.userId,
+      authorName: session.username
+    })
+  });
+
+  loadTopics();
+}
+
+async function editTopic(id) {
+  const title = prompt("Новое название?");
+  const content = prompt("Новый текст?");
+  if (!title || !content) return;
+
+  await fetch(`${API_TOPICS}/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title, content,
+      authorId: session.userId,
+      authorName: session.username
+    })
+  });
+
+  loadTopics();
+}
+
+async function deleteTopic(id) {
+  if (!confirm("Удалить тему?")) return;
+
+  await fetch(`${API_TOPICS}/${id}`, { method: "DELETE" });
+  loadTopics();
+}
+
+async function showMessages(id) {
+  const res = await fetch(`${API_MESSAGES}?topicId=${id}`);
+  const messages = await res.json();
+  const container = document.getElementById(`msg-${id}`);
+
+  container.innerHTML = `
+    <h4>Комментарии</h4>
+    ${messages.map(m => `
+      <div class="msg">
+        <b>${m.authorName}</b>: ${m.text}
+
+        ${session && session.userId == m.authorId ? `
+          <button onclick="editMsg(${m.id}, ${id})">✏</button>
+          <button class="red" onclick="deleteMsg(${m.id}, ${id})">✖</button>
+        ` : ""}
+      </div>
+    `).join("")}
+
+    ${
+      session
+      ? `
+        <input id="msg-text-${id}" placeholder="Сообщение">
+        <button onclick="sendMsg(${id})">Отправить</button>
+      `
+      : "<p>Чтобы написать комментарий — войдите</p>"
+    }
+  `;
+}
+
+async function sendMsg(id) {
+  const text = document.getElementById(`msg-text-${id}`).value;
+  if (!text) return;
+
+  await fetch(API_MESSAGES, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text,
+      topicId: id,
+      authorId: session.userId,
+      authorName: session.username
+    })
+  });
+
+  showMessages(id);
+}
+
+async function editMsg(msgId, topicId) {
+  const text = prompt("Новое сообщение:");
+  if (!text) return;
+
+  await fetch(`${API_MESSAGES}/${msgId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text,
+      topicId,
+      authorId: session.userId,
+      authorName: session.username
+    })
+  });
+
+  showMessages(topicId);
+}
+
+async function deleteMsg(msgId, topicId) {
+  await fetch(`${API_MESSAGES}/${msgId}`, { method: "DELETE" });
+  showMessages(topicId);
+}
+
+renderAuth();
+loadTopics();
+</script>
+</body>
+</html>
